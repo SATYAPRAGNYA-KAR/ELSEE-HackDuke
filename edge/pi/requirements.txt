@@ -1,0 +1,16 @@
+# Core
+opencv-python-headless==4.9.0.80
+numpy==1.26.4
+onnxruntime==1.18.0          # CPU build, compatible with Pi 4/5
+
+# Networking
+websockets==12.0
+requests==2.31.0
+python-dotenv==1.0.1
+
+# Audio (optional, install if microphone available)
+sounddevice==0.4.6
+scipy==1.13.0
+
+# YOLOv8 (only needed to export model, not for inference)
+# ultralytics==8.2.0

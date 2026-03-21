@@ -1,0 +1,21 @@
+# Core vision
+opencv-python==4.9.0.80
+numpy==1.26.4
+
+# ONNX Runtime — install the Jetson-optimised wheel if possible:
+# https://elinux.org/Jetson_Zoo#ONNX_Runtime
+# Otherwise standard CPU build:
+onnxruntime==1.18.0
+
+# Networking
+websockets==12.0
+requests==2.31.0
+python-dotenv==1.0.1
+
+# Audio
+sounddevice==0.4.6
+scipy==1.13.0
+
+# TensorRT Python bindings ship with JetPack — no pip install needed.
+# pycuda must be compiled for your CUDA version:
+# pip install pycuda
