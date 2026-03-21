@@ -1,4 +1,4 @@
-# 👁️ SeeForMe — AI-Powered Accessibility Vision Assistant
+# 👁️ ELSEE — AI-Powered Accessibility Vision Assistant
 
 > Real-time obstacle detection, scene understanding, and OCR for the visually impaired — powered by YOLOv8, MiDaS, Gemini, and ElevenLabs.
 
@@ -48,7 +48,7 @@ Mobile Camera (React Native App)
 ## 📁 Repository Structure
 
 ```
-seefore/
+elsee/
 ├── edge/
 │   ├── pi/                    # Raspberry Pi pipeline (YOLO + MiDaS)
 │   └── jetson/                # Jetson Nano pipeline (TensorRT variant)
@@ -75,9 +75,8 @@ seefore/
 
 ### 1. Clone & configure environment
 ```bash
-git clone https://github.com/yourteam/seefore.git
-cd seefore
-cp .env.example .env
+git clone https://github.com/ShipraaMathur/elsee.git
+touch .env
 # Fill in all API keys in .env
 ```
 
@@ -121,6 +120,6 @@ npx expo start
 
 ## 🏆 Built for Code for Good 2026
 
-**Team SeeForMe** — Accessibility Track / Interactive Media Track
+**Team ELSEE** — Accessibility Track / Interactive Media Track
 
 Tech stack: YOLOv8 · MiDaS · Gemini API · ElevenLabs · Auth0 · Cloudflare · Vultr · DigitalOcean · Snowflake · MongoDB Atlas · React Native · FastAPI · ONNX Runtime
