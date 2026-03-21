@@ -1,0 +1,171 @@
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-selfcheck.json
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+.python-version
+
+# ─── Node / React Native / Expo ───────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp
+.pnp.js
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+
+# Metro bundler
+.metro-health-check*
+
+# React Native
+android/
+ios/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# EAS Build
+.easignore
+
+# ─── ML Models (large binary files) ──────────────────────────────────────────
+edge/pi/models/
+edge/jetson/models/
+**/*.onnx
+**/*.engine
+**/*.pt
+**/*.pth
+**/*.tflite
+**/*.pb
+**/*.h5
+**/*.weights
+
+# ─── Environment & Secrets ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+secrets/
+credentials/
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+.dockerignore
+docker-compose.override.yml
+.docker/
+
+# ─── Cloudflare / Wrangler ────────────────────────────────────────────────────
+cloudflare/.wrangler/
+cloudflare/dist/
+wrangler.toml.local
+
+# ─── Databases & Storage ──────────────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+mongo_data/
+postgres_data/
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+*.out
+
+# ─── OS & Editor ──────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# ─── Testing & Coverage ───────────────────────────────────────────────────────
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+pytestdebug.log
+
+# ─── Jupyter ──────────────────────────────────────────────────────────────────
+.ipynb_checkpoints
+*.ipynb
+
+# ─── TypeScript ───────────────────────────────────────────────────────────────
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# ─── Misc build artifacts ─────────────────────────────────────────────────────
+*.mo
+*.pot
+*.pyc
+*.spec
+out/
+.next/
+.nuxt/
+.cache/
