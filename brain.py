@@ -6,13 +6,15 @@ from google.genai import types
 from elevenlabs.client import ElevenLabs
 from elevenlabs import stream
 from pymongo import MongoClient
+from dotenv import load_dotenv
+load_dotenv()
 
 # Load environment variables
 load_dotenv()
 
 # 1. Initialize API Clients
 # Ensure GEMINI_API_KEY, ELEVENLABS_API_KEY, and MONGO_URI are in your .env
-gen_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+gen_client = genai.Client(api_key=os.getenv("EXPO_PUBLIC_GEMINI_API_KEY"))
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
 # 2. MongoDB Setup

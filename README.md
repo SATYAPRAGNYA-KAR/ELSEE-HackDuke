@@ -108,7 +108,7 @@ npx expo start
 
 | Service | Purpose | Get it at |
 |---|---|---|
-| `GEMINI_API_KEY` | Scene analysis + OCR | aistudio.google.com |
+| `EXPO_PUBLIC_GEMINI_API_KEY` | Scene analysis + OCR | aistudio.google.com |
 | `ELEVENLABS_API_KEY` | Text-to-speech | elevenlabs.io |
 | `AUTH0_DOMAIN` | Auth | auth0.com |
 | `AUTH0_CLIENT_ID` | Auth | auth0.com |
