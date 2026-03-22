@@ -94,6 +94,14 @@ const SILENCE_END_MS = 1400;
 const MIN_UTTERANCE_MS = 800;
 const MAX_LISTEN_MS = 50000;
 
+/** Plain text from Gemini `generateContent` JSON (concatenates all `parts`). */
+function textFromGeminiResult(data: unknown): string {
+  const parts = (data as { candidates?: { content?: { parts?: { text?: string }[] } }[] })?.candidates?.[0]
+    ?.content?.parts;
+  if (!Array.isArray(parts)) return '';
+  return parts.map((p) => (typeof p?.text === 'string' ? p.text : '')).join('').trim();
+}
+
 function getSpeechRecordingOptions(): RecordingOptions {
   const iosWav: RecordingOptions['ios'] = {
     extension: '.wav',
@@ -459,8 +467,9 @@ Start with the most important safety information first.`;
     });
 
     const data = await res.json();
-    const responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text
-      || 'Sorry, I could not analyze the scene.';
+    const geminiResult = textFromGeminiResult(data);
+    const responseText =
+      geminiResult || 'Sorry, I could not analyze the scene.';
 
     // Save photo to filesystem for display
     let savedUri: string | undefined;
@@ -487,12 +496,15 @@ Start with the most important safety information first.`;
     sessions.unshift(newSession);
     await AsyncStorage.setItem('sf_sessions', JSON.stringify(sessions.slice(0, 50)));
 
-    // Speak response — ElevenLabs if key available, else expo-speech
-    await speakResponse(responseText);
+    // Speak Gemini output verbatim (same string as on screen)
+    await speakGeminiOutput(responseText);
   };
 
-  // ── TTS ─────────────────────────────────────────────────────────────────────
-  const speakResponse = async (text: string) => {
+  // ── TTS: Gemini answer only (ElevenLabs or expo-speech), await playback ─────
+  const speakGeminiOutput = async (text: string): Promise<void> => {
+    const t = (text || '').trim();
+    if (!t) return;
+
     if (ELEVENLABS_KEY) {
       try {
         const res = await fetch(
@@ -505,35 +517,61 @@ Start with the most important safety information first.`;
               'Accept': 'audio/mpeg',
             },
             body: JSON.stringify({
-              text,
+              text: t,
               model_id: 'eleven_turbo_v2',
               voice_settings: { stability: 0.5, similarity_boost: 0.75 },
             }),
           }
         );
+        if (!res.ok) throw new Error('ElevenLabs TTS failed');
         const audioBlob = await res.blob();
-        const reader = new FileReader();
-        reader.readAsDataURL(audioBlob);
-        reader.onloadend = async () => {
-          const base64Audio = (reader.result as string).split(',')[1];
-          const audioPath = FileSystem.cacheDirectory + 'response.mp3';
-          await FileSystem.writeAsStringAsync(audioPath, base64Audio, {
-            encoding: FileSystem.EncodingType.Base64,
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error('read blob'));
+          reader.readAsDataURL(audioBlob);
+        });
+        const base64Audio = dataUrl.split(',')[1];
+        const audioPath = `${FileSystem.cacheDirectory}gemini_answer_${Date.now()}.mp3`;
+        await FileSystem.writeAsStringAsync(audioPath, base64Audio, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await soundRef.current?.unloadAsync();
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: audioPath },
+          { shouldPlay: true }
+        );
+        soundRef.current = sound;
+        await new Promise<void>((resolve) => {
+          const safety = setTimeout(() => resolve(), 120_000);
+          sound.setOnPlaybackStatusUpdate((status) => {
+            if (!status.isLoaded) return;
+            if (status.didJustFinish) {
+              clearTimeout(safety);
+              resolve();
+            }
           });
-          await soundRef.current?.unloadAsync();
-          const { sound } = await Audio.Sound.createAsync(
-            { uri: audioPath }, { shouldPlay: true }
-          );
-          soundRef.current = sound;
-        };
+        });
         return;
       } catch {
-        // Fall through to expo-speech
+        /* fall through to expo-speech */
       }
     }
-    // Fallback: expo-speech (free, no API key needed)
-    Speech.stop();
-    Speech.speak(text, { rate: 0.95, pitch: 1.0 });
+
+    await Speech.stop();
+    await new Promise<void>((resolve) => {
+      Speech.speak(t, {
+        rate: 0.95,
+        pitch: 1.0,
+        onDone: () => resolve(),
+        onStopped: () => resolve(),
+        onError: () => resolve(),
+      });
+    });
+  };
+
+  const speakResponse = async (text: string) => {
+    await speakGeminiOutput(text);
   };
 
   const replayResponse = async () => {

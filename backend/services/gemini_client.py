@@ -53,7 +53,7 @@ Your response should:
 4. Be concise and spoken naturally (this will be read aloud)
 5. Start with the most critical safety information first
 
-Keep your response under 3 sentences for voice delivery."""
+Keep your response short and concise for voice delivery."""
 
     try:
         if frame_b64:
