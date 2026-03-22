@@ -24,8 +24,8 @@ const GEMINI_API_KEY  = process.env.EXPO_PUBLIC_GEMINI_API_KEY  || '';
 const ELEVENLABS_KEY  = process.env.EXPO_PUBLIC_ELEVENLABS_KEY  || '';
 const ELEVENLABS_VOICE = process.env.EXPO_PUBLIC_ELEVENLABS_VOICE || '21m00Tcm4TlvDq8ikWAM';
 
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-const GEMINI_STT_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_STT_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 const DEV_SYNC_SECRET = process.env.EXPO_PUBLIC_DEV_SYNC_SECRET || '';
 
