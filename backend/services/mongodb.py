@@ -65,6 +65,24 @@ async def log_query_session(data: dict):
         log.error(f"MongoDB query log error: {e}")
 
 
+async def get_app_config() -> dict:
+    """
+    Single document in `app_config` with _id 'default' — drives mobile public config (URLs only).
+    """
+    if _db is None:
+        return {}
+    try:
+        doc = await _db["app_config"].find_one({"_id": "default"})
+        if not doc:
+            return {}
+        out = dict(doc)
+        out.pop("_id", None)
+        return out
+    except Exception as e:
+        log.error(f"MongoDB app_config read error: {e}")
+        return {}
+
+
 async def get_recent_sessions(user_id: str, limit: int = 20) -> list:
     """Retrieve recent sessions for a user."""
     if _db is None:

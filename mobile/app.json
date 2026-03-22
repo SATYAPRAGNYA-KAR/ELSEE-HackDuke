@@ -15,10 +15,14 @@
       "bundleIdentifier": "com.seefore.app",
       "infoPlist": {
         "NSCameraUsageDescription": "SeeForMe uses the camera to detect obstacles and analyze scenes.",
-        "NSMicrophoneUsageDescription": "SeeForMe uses the microphone to accept voice queries."
+        "NSMicrophoneUsageDescription": "SeeForMe uses the microphone to accept voice queries.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
       }
     },
     "android": {
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#080B12"
       },

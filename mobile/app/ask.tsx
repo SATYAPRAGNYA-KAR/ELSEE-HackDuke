@@ -2,13 +2,23 @@ import { useRef, useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   TextInput, ScrollView, Image, Alert,
+  Platform, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import type { RecordingOptions } from 'expo-av/build/Audio/Recording.types';
+import {
+  AndroidOutputFormat,
+  AndroidAudioEncoder,
+  IOSOutputFormat,
+  IOSAudioQuality,
+} from 'expo-av/build/Audio/RecordingConstants';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { useRemoteConfig } from '../context/RemoteConfigContext';
 
 const GEMINI_API_KEY  = process.env.EXPO_PUBLIC_GEMINI_API_KEY  || '';
 const ELEVENLABS_KEY  = process.env.EXPO_PUBLIC_ELEVENLABS_KEY  || '';
@@ -16,6 +26,111 @@ const ELEVENLABS_VOICE = process.env.EXPO_PUBLIC_ELEVENLABS_VOICE || '21m00Tcm4T
 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 const GEMINI_STT_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+const DEV_SYNC_SECRET = process.env.EXPO_PUBLIC_DEV_SYNC_SECRET || '';
+
+/** Saved on device for pipelines that expect `query.wav` (iOS: PCM WAV; Android: AAC in .m4a bytes copied to this name). */
+const QUERY_WAV_FILENAME = 'query.wav';
+
+function fileUriForUpload(uri: string): string {
+  if (Platform.OS === 'android' && uri && !uri.startsWith('file://') && !uri.startsWith('content://')) {
+    return `file://${uri}`;
+  }
+  return uri;
+}
+
+async function uploadRecordingToDevMachine(
+  syncBase: string,
+  localAudioUri: string,
+  frameB64?: string,
+): Promise<void> {
+  if (!syncBase) return;
+  const url = `${syncBase}/api/dev/query-wav`;
+  const form = new FormData();
+  const audioUri = fileUriForUpload(localAudioUri);
+  form.append('file', {
+    uri: audioUri,
+    name: QUERY_WAV_FILENAME,
+    type: 'audio/wav',
+  } as any);
+  if (frameB64) {
+    const framePath = `${FileSystem.cacheDirectory ?? ''}dev_sync_frame.jpg`;
+    await FileSystem.writeAsStringAsync(framePath, frameB64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    form.append('frame', {
+      uri: fileUriForUpload(framePath),
+      name: 'test.jpg',
+      type: 'image/jpeg',
+    } as any);
+  }
+  const headers: HeadersInit = {};
+  if (DEV_SYNC_SECRET) (headers as Record<string, string>)['X-Dev-Sync-Key'] = DEV_SYNC_SECRET;
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 45000);
+  let res: Response;
+  try {
+    res = await fetch(url, { method: 'POST', body: form, headers, signal: ctrl.signal });
+  } catch (e: any) {
+    const msg = e?.name === 'AbortError' ? 'Dev sync timed out (45s)' : (e?.message || 'Network request failed');
+    throw new Error(
+      `${msg}. Use your Mac’s LAN IP (not localhost), same Wi‑Fi, run ./backend/run_dev_sync.sh, and rebuild after enabling HTTP in app.json (Android cleartext).`,
+    );
+  } finally {
+    clearTimeout(t);
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Dev sync ${res.status}: ${text.slice(0, 120)}`);
+  }
+}
+
+const SPEECH_DB = -38;
+const SILENCE_DB = -42;
+const LOUD_TICKS_TO_START = 3;
+const SILENCE_END_MS = 1400;
+const MIN_UTTERANCE_MS = 800;
+const MAX_LISTEN_MS = 50000;
+
+function getSpeechRecordingOptions(): RecordingOptions {
+  const iosWav: RecordingOptions['ios'] = {
+    extension: '.wav',
+    outputFormat: IOSOutputFormat.LINEARPCM,
+    audioQuality: IOSAudioQuality.HIGH,
+    sampleRate: 16000,
+    numberOfChannels: 1,
+    bitRate: 256000,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  };
+  const iosM4a: RecordingOptions['ios'] = {
+    extension: '.m4a',
+    outputFormat: IOSOutputFormat.MPEG4AAC,
+    audioQuality: IOSAudioQuality.MAX,
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    bitRate: 128000,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  };
+  return {
+    isMeteringEnabled: true,
+    ios: Platform.OS === 'ios' ? iosWav : iosM4a,
+    android: {
+      extension: '.m4a',
+      outputFormat: AndroidOutputFormat.MPEG_4,
+      audioEncoder: AndroidAudioEncoder.AAC,
+      sampleRate: 16000,
+      numberOfChannels: 1,
+      bitRate: 64000,
+    },
+    web: { mimeType: 'audio/webm', bitsPerSecond: 128000 },
+  };
+}
 
 interface Session {
   id: string;
@@ -26,17 +141,42 @@ interface Session {
 }
 
 export default function AskScreen() {
+  const remote = useRemoteConfig();
+  const devSyncBase = (remote.dev_sync_url || process.env.EXPO_PUBLIC_DEV_SYNC_URL || '').replace(
+    /\/$/,
+    '',
+  );
+
   const [camPermission, requestCamPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('back');
-  const [showCamera, setShowCamera] = useState(true);
+  const [autoListen, setAutoListen] = useState(true);
+  const [vadPhase, setVadPhase] = useState<'idle' | 'listening' | 'capturing'>('idle');
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [textInput, setTextInput] = useState('');
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState('');
   const cameraRef = useRef<CameraView>(null);
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const vadRecordingRef = useRef<Audio.Recording | null>(null);
+  const manualRecordingRef = useRef<Audio.Recording | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const vadStateRef = useRef({
+    speechStarted: false,
+    loudTicks: 0,
+    quietSinceMs: null as number | null,
+  });
+  const vadFinishingRef = useRef(false);
+  const autoListenRef = useRef(true);
+  const isProcessingRef = useRef(false);
+  const startVadSessionRef = useRef<() => Promise<void>>(async () => {});
+
+  useEffect(() => {
+    autoListenRef.current = autoListen;
+  }, [autoListen]);
+
+  useEffect(() => {
+    isProcessingRef.current = isProcessing;
+  }, [isProcessing]);
 
   useEffect(() => {
     Audio.requestPermissionsAsync();
@@ -55,46 +195,192 @@ export default function AskScreen() {
     } catch { return ''; }
   };
 
-  // ── Recording ───────────────────────────────────────────────────────────────
-  const startRecording = async () => {
+  const queryWavUri = `${FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? ''}${QUERY_WAV_FILENAME}`;
+
+  const stopVadRecordingClean = async () => {
+    const rec = vadRecordingRef.current;
+    vadRecordingRef.current = null;
+    if (!rec) return;
+    try {
+      rec.setOnRecordingStatusUpdate(null);
+      await rec.stopAndUnloadAsync();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  startVadSessionRef.current = async () => {
+    if (!autoListenRef.current || vadFinishingRef.current || isProcessingRef.current) return;
+    await stopVadRecordingClean();
+    await Speech.stop();
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+    vadStateRef.current = { speechStarted: false, loudTicks: 0, quietSinceMs: null };
+    setVadPhase('listening');
+
+    try {
+      const { recording } = await Audio.Recording.createAsync(
+        getSpeechRecordingOptions(),
+        (status) => {
+          if (!status.isRecording || vadFinishingRef.current || isProcessingRef.current) return;
+          const db = status.metering ?? -160;
+          const dur = status.durationMillis;
+          const st = vadStateRef.current;
+
+          if (!st.speechStarted) {
+            if (db > SPEECH_DB) st.loudTicks += 1;
+            else st.loudTicks = 0;
+            if (st.loudTicks >= LOUD_TICKS_TO_START) {
+              st.speechStarted = true;
+              setVadPhase('capturing');
+            }
+            if (dur > MAX_LISTEN_MS && !st.speechStarted) {
+              void restartVadAmbient();
+            }
+          } else {
+            if (db >= SILENCE_DB) st.quietSinceMs = null;
+            else if (st.quietSinceMs == null) st.quietSinceMs = Date.now();
+            else if (
+              Date.now() - st.quietSinceMs > SILENCE_END_MS
+              && dur > MIN_UTTERANCE_MS
+            ) {
+              void completeVadUtterance();
+            }
+            if (dur > MAX_LISTEN_MS) void completeVadUtterance();
+          }
+        },
+        100
+      );
+      vadRecordingRef.current = recording;
+    } catch (e: any) {
+      setError('Mic error: ' + e.message);
+      setVadPhase('idle');
+    }
+  };
+
+  const restartVadAmbient = async () => {
+    if (vadFinishingRef.current) return;
+    await stopVadRecordingClean();
+    vadStateRef.current = { speechStarted: false, loudTicks: 0, quietSinceMs: null };
+    if (autoListenRef.current && !isProcessingRef.current) {
+      await startVadSessionRef.current();
+    }
+  };
+
+  const completeVadUtterance = async () => {
+    if (vadFinishingRef.current) return;
+    vadFinishingRef.current = true;
+    const rec = vadRecordingRef.current;
+    vadRecordingRef.current = null;
+    if (!rec) {
+      vadFinishingRef.current = false;
+      return;
+    }
+    try {
+      rec.setOnRecordingStatusUpdate(null);
+      await rec.stopAndUnloadAsync();
+      const uri = rec.getURI();
+      if (!uri) {
+        vadFinishingRef.current = false;
+        if (autoListenRef.current) await startVadSessionRef.current();
+        return;
+      }
+
+      await FileSystem.copyAsync({ from: uri, to: queryWavUri });
+
+      const frameB64 = await captureFrame();
+
+      try {
+        await uploadRecordingToDevMachine(devSyncBase, queryWavUri, frameB64 || undefined);
+      } catch (syncErr: any) {
+        if (devSyncBase) {
+          const msg = syncErr?.message || 'Dev sync failed';
+          setError((prev) => (prev ? `${prev} | ${msg}` : msg));
+        }
+      }
+      const audioB64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const mime = uri.endsWith('.wav') ? 'audio/wav' : 'audio/mp4';
+
+      Speech.stop();
+      setIsProcessing(true);
+      setVadPhase('idle');
+      const query = await transcribeAudio(audioB64, mime);
+      await processQuery(query, frameB64, queryWavUri);
+    } catch (e: any) {
+      setError('Error: ' + e.message);
+    } finally {
+      setIsProcessing(false);
+      vadFinishingRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (!camPermission?.granted || !autoListen || isProcessing) {
+      void stopVadRecordingClean();
+      setVadPhase('idle');
+      return;
+    }
+    void startVadSessionRef.current();
+    return () => {
+      void stopVadRecordingClean();
+    };
+  }, [camPermission?.granted, autoListen, isProcessing]);
+
+  // ── Manual hold-to-talk (when auto is off) ─────────────────────────────────
+  const startManualRecording = async () => {
+    if (autoListen) return;
     setError('');
     try {
+      await Speech.stop();
+      await stopVadRecordingClean();
       await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
-      recordingRef.current = recording;
+      manualRecordingRef.current = recording;
       setIsRecording(true);
     } catch (e: any) {
       setError('Mic error: ' + e.message);
     }
   };
 
-  const stopRecording = async () => {
-    if (!recordingRef.current) return;
+  const stopManualRecording = async () => {
+    if (autoListen) return;
+    if (!manualRecordingRef.current) return;
     setIsRecording(false);
     setIsProcessing(true);
     setError('');
     try {
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
+      await manualRecordingRef.current.stopAndUnloadAsync();
+      const uri = manualRecordingRef.current.getURI();
+      manualRecordingRef.current = null;
 
-      // Capture frame at same time as audio
       const frameB64 = await captureFrame();
 
-      // Convert audio to base64
+      if (uri) {
+        await FileSystem.copyAsync({ from: uri, to: queryWavUri });
+        try {
+          await uploadRecordingToDevMachine(devSyncBase, queryWavUri, frameB64 || undefined);
+        } catch (syncErr: any) {
+          if (devSyncBase) {
+            const msg = syncErr?.message || 'Dev sync failed';
+            setError((prev) => (prev ? `${prev} | ${msg}` : msg));
+          }
+        }
+      }
+
       const audioB64 = uri
         ? await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 })
         : '';
 
-      // STT via Gemini
       let query = 'What can you see in front of me?';
       if (audioB64) {
-        query = await transcribeAudio(audioB64);
+        const mime = uri?.endsWith('.wav') ? 'audio/wav' : 'audio/mp4';
+        query = await transcribeAudio(audioB64, mime);
       }
 
-      await processQuery(query, frameB64, uri);
+      await processQuery(query, frameB64, uri ? queryWavUri : undefined);
     } catch (e: any) {
       setError('Error: ' + e.message);
     } finally {
@@ -103,7 +389,7 @@ export default function AskScreen() {
   };
 
   // ── STT via Gemini ──────────────────────────────────────────────────────────
-  const transcribeAudio = async (audioB64: string): Promise<string> => {
+  const transcribeAudio = async (audioB64: string, mime: string = 'audio/mp4'): Promise<string> => {
     try {
       const res = await fetch(GEMINI_STT_URL, {
         method: 'POST',
@@ -112,7 +398,7 @@ export default function AskScreen() {
           contents: [{
             parts: [
               { text: 'Transcribe this audio exactly as spoken. Return only the transcribed text.' },
-              { inline_data: { mime_type: 'audio/mp4', data: audioB64 } },
+              { inline_data: { mime_type: mime, data: audioB64 } },
             ],
           }],
         }),
@@ -273,7 +559,16 @@ Start with the most important safety information first.`;
     <SafeAreaView style={s.container}>
       <View style={s.header}>
         <Text style={s.title}>Ask SeeForMe</Text>
-        <Text style={s.subtitle}>Hold mic · Type · Hear the answer</Text>
+        <Text style={s.subtitle}>Speak naturally · Type · Hear the answer</Text>
+        <View style={s.autoRow}>
+          <Text style={s.autoLabel}>Auto voice (listen for speech)</Text>
+          <Switch
+            value={autoListen}
+            onValueChange={setAutoListen}
+            trackColor={{ false: '#1E2740', true: 'rgba(0,245,196,0.45)' }}
+            thumbColor={autoListen ? '#00F5C4' : '#5A6580'}
+          />
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
@@ -293,26 +588,39 @@ Start with the most important safety information first.`;
           </TouchableOpacity>
         </View>
 
-        {/* Mic button */}
+        {/* Mic: auto VAD or manual hold */}
         <View style={s.micSection}>
           <TouchableOpacity
             style={[
               s.micBtn,
-              isRecording && s.micBtnRec,
+              (isRecording || (autoListen && vadPhase === 'capturing')) && s.micBtnRec,
               isProcessing && s.micBtnProc,
             ]}
-            onPressIn={startRecording}
-            onPressOut={stopRecording}
-            disabled={isProcessing}
+            onPressIn={autoListen ? undefined : startManualRecording}
+            onPressOut={autoListen ? undefined : stopManualRecording}
+            disabled={isProcessing || autoListen}
             activeOpacity={0.85}
           >
             <Text style={s.micIcon}>
-              {isProcessing ? '⏳' : isRecording ? '🔴' : '🎙'}
+              {isProcessing ? '⏳' : isRecording ? '🔴' : autoListen && vadPhase === 'capturing' ? '🎯' : '🎙'}
             </Text>
           </TouchableOpacity>
           <Text style={s.micHint}>
-            {isProcessing ? 'Analyzing...' : isRecording ? 'Listening... release to send' : 'Hold to speak'}
+            {autoListen
+              ? (isProcessing
+                ? 'Analyzing...'
+                : vadPhase === 'capturing'
+                  ? 'Heard you — finishing after you pause...'
+                  : 'Listening — start speaking anytime')
+              : (isProcessing
+                ? 'Analyzing...'
+                : isRecording
+                  ? 'Release to send'
+                  : 'Hold mic to speak')}
           </Text>
+          {autoListen ? (
+            <Text style={s.micHintSmall}>Audio saves as {QUERY_WAV_FILENAME}</Text>
+          ) : null}
         </View>
 
         {/* Text input */}
@@ -370,6 +678,11 @@ const s = StyleSheet.create({
   },
   title: { fontSize: 22, fontWeight: '800', color: '#00F5C4', letterSpacing: 1 },
   subtitle: { color: '#3A4260', fontSize: 12, marginTop: 2 },
+  autoRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#1E2740',
+  },
+  autoLabel: { color: '#C8CDD8', fontSize: 13, flex: 1, paddingRight: 12 },
   content: { padding: 16, gap: 14 },
 
   cameraWrap: {
@@ -393,7 +706,8 @@ const s = StyleSheet.create({
   micBtnRec: { backgroundColor: '#1a0d12', borderColor: '#FF4D6D' },
   micBtnProc: { borderColor: '#FF9F43' },
   micIcon: { fontSize: 38 },
-  micHint: { color: '#5A6580', fontSize: 13 },
+  micHint: { color: '#5A6580', fontSize: 13, textAlign: 'center', paddingHorizontal: 8 },
+  micHintSmall: { color: '#3A4260', fontSize: 11, marginTop: 4 },
 
   textRow: { flexDirection: 'row', gap: 8 },
   textInput: {

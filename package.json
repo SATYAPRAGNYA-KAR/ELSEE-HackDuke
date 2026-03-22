@@ -1,0 +1,9 @@
+{
+  "name": "seefore-repo",
+  "private": true,
+  "scripts": {
+    "start": "cd mobile && npx expo start",
+    "android": "cd mobile && npx expo start --android",
+    "ios": "cd mobile && npx expo start --ios"
+  }
+}

@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from routers import obstacles, query, scene, auth, health
+from routers import obstacles, query, scene, auth, health, dev_sync, public_config
 from services.mongodb import connect_mongo, close_mongo
 from services.snowflake_client import init_snowflake
 
@@ -56,3 +56,5 @@ app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(obstacles.router, prefix="/ws", tags=["WebSocket"])
 app.include_router(query.router, prefix="/api", tags=["Query"])
 app.include_router(scene.router, prefix="/api", tags=["Scene"])
+app.include_router(dev_sync.router, prefix="/api", tags=["Dev"])
+app.include_router(public_config.router, prefix="/api", tags=["Config"])

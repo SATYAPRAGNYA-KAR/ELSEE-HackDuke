@@ -4,16 +4,20 @@ import { StyleSheet, Text } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { RemoteConfigProvider } from '../context/RemoteConfigContext';
+
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.4 }}>{emoji}</Text>;
 }
 
 export default function RootLayout() {
   return (
+    <RemoteConfigProvider>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style="light" />
         <Tabs
+          initialRouteName="ask"
           screenOptions={{
             headerShown: false,
             tabBarStyle: styles.tabBar,
@@ -53,6 +57,7 @@ export default function RootLayout() {
         </Tabs>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+    </RemoteConfigProvider>
   );
 }
 
