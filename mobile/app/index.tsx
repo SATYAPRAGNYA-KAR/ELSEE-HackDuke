@@ -122,9 +122,13 @@ export default function LiveScreen() {
 
       if (!photo?.base64) return;
 
-      const prompt = `You help a blind person walking forward. Look at this single image.
-Is there an immediate obstacle in their path (within about 2 meters) that could cause a collision or trip?
-Reply with exactly one word: YES or NO. No other text.`;
+      const prompt = `Answer STRICTLY with one token:
+        YES or NO.
+
+        Do NOT add any other words, punctuation, or explanation.
+
+        Image:
+        Is there an obstacle within 2 meters directly ahead?`;
 
       const response = await fetch(GEMINI_URL, {
         method: 'POST',
@@ -142,6 +146,7 @@ Reply with exactly one word: YES or NO. No other text.`;
 
       const data = await response.json();
       const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      console.log("Gemini raw output:", raw);
 
       if (textSaysCautionNeeded(raw)) {
         const now = Date.now();
