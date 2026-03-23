@@ -449,7 +449,7 @@ Analyze the image and:
 1. Directly answer their question
 2. Mention any visible text or signs (OCR)
 3. Note any important obstacles or hazards
-4. Be concise — this will be spoken aloud (max 3 sentences)
+4. Be concise — this will be spoken aloud 
 Start with the most important safety information first.`;
 
     const parts: any[] = [{ text: prompt }];

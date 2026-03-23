@@ -80,7 +80,7 @@ async def analyze_scene_and_ocr(frame_b64: str) -> dict:
   "description": "Detailed spatial description of the scene including layout, colors, and context",
   "ocr_text": "Any text, signs, labels, or writing visible in the image. Empty string if none.",
   "objects_detected": ["list", "of", "key", "objects"],
-  "summary": "One natural sentence summary suitable for text-to-speech, mentioning key objects and any text found"
+  "summary": "Small summary suitable for text-to-speech, mentioning key objects and any text found"
 }"""
 
     try:
